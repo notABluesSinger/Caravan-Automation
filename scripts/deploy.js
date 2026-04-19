@@ -31,6 +31,14 @@ function findScriptIdByName(payload, scriptName) {
   return match && match.id !== undefined ? match.id : null;
 }
 
+function findFirstUnusedSlot(payload) {
+  const scripts = extractScripts(payload);
+  const usedIds = new Set(scripts.map(function (s) { return Number(s.id); }));
+  let candidate = 1;
+  while (usedIds.has(candidate)) candidate++;
+  return candidate;
+}
+
 async function fetchScriptList(host) {
   // Shelly devices only expose their local RPC API over plain HTTP.
   // eslint-disable-next-line sonarjs/no-clear-text-protocols
@@ -72,7 +80,9 @@ async function resolveScriptId(host, targetPath, explicitScriptId) {
   const scriptId = findScriptIdByName(payload, scriptName);
 
   if (scriptId === null) {
-    throw new Error("Could not find a Shelly script named '" + scriptName + "' on " + host);
+    const newSlot = findFirstUnusedSlot(payload);
+    console.log("No script named '" + scriptName + "' found; using empty slot " + newSlot);
+    return newSlot;
   }
 
   console.log("Resolved script '" + scriptName + "' to slot " + scriptId);
@@ -122,6 +132,7 @@ if (require.main === module) {
 module.exports = {
   TARGETS,
   extractScripts,
+  findFirstUnusedSlot,
   findScriptIdByName,
   getTargetPath,
   getTargetScriptName

@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
   TARGETS,
   extractScripts,
+  findFirstUnusedSlot,
   findScriptIdByName,
   getTargetPath,
   getTargetScriptName
@@ -52,4 +53,16 @@ test("findScriptIdByName returns null when no script matches", function () {
     findScriptIdByName({ scripts: [{ id: 7, name: "different.js" }] }, "toiletLight.js"),
     null
   );
+});
+
+test("findFirstUnusedSlot returns 1 when no scripts exist", function () {
+  assert.equal(findFirstUnusedSlot({ scripts: [] }), 1);
+});
+
+test("findFirstUnusedSlot fills the lowest gap in existing IDs", function () {
+  assert.equal(findFirstUnusedSlot({ scripts: [{ id: 1 }, { id: 2 }, { id: 4 }] }), 3);
+});
+
+test("findFirstUnusedSlot returns the next slot after a contiguous run", function () {
+  assert.equal(findFirstUnusedSlot({ scripts: [{ id: 1 }, { id: 2 }, { id: 3 }] }), 4);
 });
