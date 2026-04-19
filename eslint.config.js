@@ -16,8 +16,18 @@ module.exports = [
         fetch: "readonly",
         AbortSignal: "readonly",
         Shelly: "readonly",
+        Timer: "readonly",
         print: "readonly"
       }
+    }
+  },
+  {
+    files: ["src/**/*.js", "scripts/**/*.js"],
+    rules: {
+      "sonarjs/cognitive-complexity": ["error", 10],
+      "complexity": ["error", 8],
+      "max-depth": ["error", 3],
+      "max-lines-per-function": ["error", { max: 40, skipBlankLines: true, skipComments: true }]
     }
   },
   {

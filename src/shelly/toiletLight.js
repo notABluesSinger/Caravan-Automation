@@ -3,32 +3,51 @@ var CONFIG = {
   inputs: {
     "0": {
       name: "PIR",
-      type: "action",
-      mode: "pir",
-      eventType: "btn_down",
-      desiredBrightnessLevel: "night",
-      turnLightOffAfter: 300,
-      requiresDarkness: true,
-      canOverridePir: false,
-      toggleOffIfAlreadySet: false,
-      onlyWhenOffOrPirMode: true
+      events: {
+        "btn_down": {
+          type: "action",
+          mode: "pir",
+          desiredBrightnessLevel: "night",
+          turnLightOffAfter: 300,
+          requiresDarkness: true,
+          canOverridePir: false,
+          toggleOffIfAlreadySet: false,
+          onlyWhenOffOrPirMode: true
+        }
+      }
     },
     "1": {
       name: "Push Button",
-      type: "pir-toggle",
-      eventType: "btn_down"
+      events: {
+        "single_push": {
+          type: "pir-toggle"
+        },
+        "long_push": {
+          type: "action",
+          mode: "manual",
+          desiredBrightnessLevel: "full",
+          turnLightOffAfter: null,
+          requiresDarkness: false,
+          canOverridePir: true,
+          toggleOffIfAlreadySet: true,
+          onlyWhenOffOrPirMode: false
+        }
+      }
     },
     "2": {
       name: "Touch Button",
-      type: "action",
-      mode: "manual",
-      eventType: "toggle",
-      desiredBrightnessLevel: "day",
-      turnLightOffAfter: null,
-      requiresDarkness: false,
-      canOverridePir: true,
-      toggleOffIfAlreadySet: true,
-      onlyWhenOffOrPirMode: false
+      events: {
+        "toggle": {
+          type: "action",
+          mode: "manual",
+          desiredBrightnessLevel: "day",
+          turnLightOffAfter: null,
+          requiresDarkness: false,
+          canOverridePir: true,
+          toggleOffIfAlreadySet: true,
+          onlyWhenOffOrPirMode: false
+        }
+      }
     },
     "3": {
       name: "Light Sensor",
@@ -51,8 +70,8 @@ var CONFIG = {
     }
   },
   brightnessLevels: {
-    night: 20,
-    day: 60,
+    night: 25,
+    day: 75,
     full: 100
   }
 };
@@ -72,6 +91,10 @@ var MAPPING = {
 function log(message) {
   if (!CONFIG.debug) return;
   print(message);
+}
+
+function isDefined(value) {
+  return value !== null && value !== undefined;
 }
 
 function getInputId(component) {
@@ -105,6 +128,13 @@ function syncPirIndicator() {
   var id = getPirIndicatorOutputId();
   if (id === null) return;
   Shelly.call("Light.Set", { id: id, on: STATE.pirEnabled });
+}
+
+function flashPirIndicator() {
+  var id = getPirIndicatorOutputId();
+  if (id === null) return;
+  Shelly.call("Light.Set", { id: id, on: true });
+  Timer.set(300, false, syncPirIndicator);
 }
 
 function getLightStatus() {
@@ -183,11 +213,11 @@ function setLightState(on, brightness, autoOffSeconds) {
     on: on
   };
 
-  if (on && brightness !== null && brightness !== undefined) {
+  if (on && isDefined(brightness)) {
     params.brightness = brightness;
   }
 
-  if (on && autoOffSeconds !== null && autoOffSeconds !== undefined) {
+  if (on && isDefined(autoOffSeconds)) {
     params.toggle_after = autoOffSeconds;
   }
 
@@ -196,6 +226,12 @@ function setLightState(on, brightness, autoOffSeconds) {
 
 function isPirModeActive(lightStatus) {
   return !!(lightStatus && lightStatus.output && STATE.currentLightMode === "pir");
+}
+
+function isBlockedByDaylight(inputConfig, lightStatus) {
+  if (!inputConfig.requiresDarkness) return false;
+  if (lightStatus.output) return false;
+  return !isDarkEnough();
 }
 
 function identifyEvent(event) {
@@ -211,29 +247,44 @@ function identifyEvent(event) {
   log("Event from component: " + event.component + " with event: " + eventName);
 }
 
-function handleAction(inputConfig) {
-  var lightStatus = getLightStatus();
-  var brightness = getBrightness(inputConfig.desiredBrightnessLevel);
-  var pirActive;
-  var alreadyAtRequestedBrightness;
+function handleAlreadyAtRequestedBrightness(inputConfig, brightness) {
+  if (inputConfig.toggleOffIfAlreadySet) {
+    log(inputConfig.name + ": already at requested brightness, turning off");
+    setLightState(false, null, null);
+    return;
+  }
 
+  if (isDefined(inputConfig.turnLightOffAfter)) {
+    log(inputConfig.name + ": resetting timer at " + brightness + "%");
+    setLightState(true, brightness, inputConfig.turnLightOffAfter);
+    return;
+  }
+
+  log(inputConfig.name + ": no action needed");
+}
+
+function shouldSkipAction(inputConfig, lightStatus) {
   if (inputConfig.mode === "pir" && !STATE.pirEnabled) {
     log(inputConfig.name + ": ignored, PIR is disabled");
-    return;
+    flashPirIndicator();
+    return true;
   }
 
   if (!lightStatus) {
     log("Light status unavailable");
-    return;
-  }
-  syncModeWithLightStatus(lightStatus);
-  if (inputConfig.requiresDarkness && !lightStatus.output && !isDarkEnough()) {
-    log(inputConfig.name + ": ignored, not dark enough to turn light on");
-    return;
+    return true;
   }
 
-  pirActive = isPirModeActive(lightStatus);
-  alreadyAtRequestedBrightness = lightStatus.output && lightStatus.brightness === brightness;
+  if (isBlockedByDaylight(inputConfig, lightStatus)) {
+    log(inputConfig.name + ": ignored, not dark enough to turn light on");
+    return true;
+  }
+
+  return false;
+}
+
+function performAction(inputConfig, brightness, lightStatus) {
+  var pirActive = isPirModeActive(lightStatus);
 
   if (!lightStatus.output) {
     log(inputConfig.name + ": light off, turning on to " + brightness + "%");
@@ -254,27 +305,23 @@ function handleAction(inputConfig) {
     return;
   }
 
-  if (alreadyAtRequestedBrightness) {
-    if (inputConfig.toggleOffIfAlreadySet) {
-      log(inputConfig.name + ": already at requested brightness, turning off");
-      setLightState(false, null, null);
-      return;
-    }
-
-    if (inputConfig.turnLightOffAfter !== null && inputConfig.turnLightOffAfter !== undefined) {
-      log(inputConfig.name + ": resetting timer at " + brightness + "%");
-      setLightState(true, brightness, inputConfig.turnLightOffAfter);
-      return;
-    }
-
-    log(inputConfig.name + ": no action needed");
+  if (lightStatus.brightness === brightness) {
+    handleAlreadyAtRequestedBrightness(inputConfig, brightness);
     return;
   }
 
   log(inputConfig.name + ": setting brightness to " + brightness + "%");
   setCurrentLightMode(inputConfig.mode);
   setLightState(true, brightness, inputConfig.turnLightOffAfter);
+}
 
+function handleAction(inputConfig) {
+  var lightStatus = getLightStatus();
+  var brightness = getBrightness(inputConfig.desiredBrightnessLevel);
+
+  if (shouldSkipAction(inputConfig, lightStatus)) return;
+  syncModeWithLightStatus(lightStatus);
+  performAction(inputConfig, brightness, lightStatus);
 }
 
 function handleTogglePir(inputConfig) {
@@ -283,25 +330,38 @@ function handleTogglePir(inputConfig) {
   syncPirIndicator();
 }
 
-Shelly.addEventHandler(function (event) {
-  var inputId;
-  var inputConfig;
-  var handler;
+function buildEffectiveConfig(inputConfig, eventConfig) {
+  var merged = { name: inputConfig.name };
+  var key;
+  for (key in eventConfig) {
+    merged[key] = eventConfig[key];
+  }
+  return merged;
+}
 
-  identifyEvent(event);
+function getInputEventConfig(inputConfig, eventName) {
+  if (!inputConfig || !inputConfig.events) return null;
+  return inputConfig.events[eventName] || null;
+}
 
+function dispatchInputEvent(event) {
   if (event.component.substring(0, 6) !== "input:") return;
   if (!event.info || !event.info.event) return;
 
-  inputId = getInputId(event.component);
+  var inputId = getInputId(event.component);
   if (inputId === null) return;
-  inputConfig = getInputConfig(inputId);
 
-  if (!inputConfig) return;
-  if (event.info.event !== inputConfig.eventType) return;
+  var inputConfig = getInputConfig(inputId);
+  var eventConfig = getInputEventConfig(inputConfig, event.info.event);
+  if (!eventConfig) return;
 
-  handler = MAPPING.inputHandlers[inputConfig.type];
-  if (handler) handler(inputConfig);
+  var handler = MAPPING.inputHandlers[eventConfig.type];
+  if (handler) handler(buildEffectiveConfig(inputConfig, eventConfig));
+}
+
+Shelly.addEventHandler(function (event) {
+  identifyEvent(event);
+  dispatchInputEvent(event);
 });
 
 syncPirIndicator();
