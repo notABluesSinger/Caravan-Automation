@@ -15,15 +15,8 @@ var CONFIG = {
     },
     "1": {
       name: "Push Button",
-      type: "action",
-      mode: "manual",
-      eventType: "btn_down",
-      desiredBrightnessLevel: "full",
-      turnLightOffAfter: null,
-      requiresDarkness: false,
-      canOverridePir: true,
-      toggleOffIfAlreadySet: true,
-      onlyWhenOffOrPirMode: false
+      type: "pir-toggle",
+      eventType: "btn_down"
     },
     "2": {
       name: "Touch Button",
@@ -44,10 +37,17 @@ var CONFIG = {
     }
   },
   outputs: {
-    "3": {
+    "0": {
       active: true,
       name: "Lights",
-      type: "light"
+      type: "light",
+      role: "main"
+    },
+    "1": {
+      active: true,
+      name: "PIR Indicator",
+      type: "light",
+      role: "pirIndicator"
     }
   },
   brightnessLevels: {
@@ -57,7 +57,17 @@ var CONFIG = {
   }
 };
 
-var currentLightMode = null;
+var STATE = {
+  currentLightMode: null,
+  pirEnabled: true
+};
+
+var MAPPING = {
+  inputHandlers: {
+    "action": handleAction,
+    "pir-toggle": handleTogglePir
+  }
+};
 
 function log(message) {
   if (!CONFIG.debug) return;
@@ -73,10 +83,10 @@ function getInputConfig(inputId) {
   return CONFIG.inputs[inputId];
 }
 
-function getActiveOutputId(type) {
+function getOutputIdByRole(role) {
   var outputId;
   for (outputId in CONFIG.outputs) {
-    if (CONFIG.outputs[outputId].active && CONFIG.outputs[outputId].type === type) {
+    if (CONFIG.outputs[outputId].active && CONFIG.outputs[outputId].role === role) {
       return Number(outputId);
     }
   }
@@ -84,7 +94,17 @@ function getActiveOutputId(type) {
 }
 
 function getLightOutputId() {
-  return getActiveOutputId("light");
+  return getOutputIdByRole("main");
+}
+
+function getPirIndicatorOutputId() {
+  return getOutputIdByRole("pirIndicator");
+}
+
+function syncPirIndicator() {
+  var id = getPirIndicatorOutputId();
+  if (id === null) return;
+  Shelly.call("Light.Set", { id: id, on: STATE.pirEnabled });
 }
 
 function getLightStatus() {
@@ -141,12 +161,12 @@ function restartLightWithoutTimer(brightness) {
 
 function syncModeWithLightStatus(lightStatus) {
   if (!lightStatus || !lightStatus.output) {
-    currentLightMode = null;
+    STATE.currentLightMode = null;
   }
 }
 
 function setCurrentLightMode(mode) {
-  currentLightMode = mode || null;
+  STATE.currentLightMode = mode || null;
 }
 
 function setLightState(on, brightness, autoOffSeconds) {
@@ -175,7 +195,7 @@ function setLightState(on, brightness, autoOffSeconds) {
 }
 
 function isPirModeActive(lightStatus) {
-  return !!(lightStatus && lightStatus.output && currentLightMode === "pir");
+  return !!(lightStatus && lightStatus.output && STATE.currentLightMode === "pir");
 }
 
 function identifyEvent(event) {
@@ -196,6 +216,11 @@ function handleAction(inputConfig) {
   var brightness = getBrightness(inputConfig.desiredBrightnessLevel);
   var pirActive;
   var alreadyAtRequestedBrightness;
+
+  if (inputConfig.mode === "pir" && !STATE.pirEnabled) {
+    log(inputConfig.name + ": ignored, PIR is disabled");
+    return;
+  }
 
   if (!lightStatus) {
     log("Light status unavailable");
@@ -252,9 +277,16 @@ function handleAction(inputConfig) {
 
 }
 
+function handleTogglePir(inputConfig) {
+  STATE.pirEnabled = !STATE.pirEnabled;
+  log(inputConfig.name + ": PIR " + (STATE.pirEnabled ? "enabled" : "disabled"));
+  syncPirIndicator();
+}
+
 Shelly.addEventHandler(function (event) {
   var inputId;
   var inputConfig;
+  var handler;
 
   identifyEvent(event);
 
@@ -265,8 +297,11 @@ Shelly.addEventHandler(function (event) {
   if (inputId === null) return;
   inputConfig = getInputConfig(inputId);
 
-  if (!inputConfig || inputConfig.type !== "action") return;
+  if (!inputConfig) return;
   if (event.info.event !== inputConfig.eventType) return;
 
-  handleAction(inputConfig);
+  handler = MAPPING.inputHandlers[inputConfig.type];
+  if (handler) handler(inputConfig);
 });
+
+syncPirIndicator();

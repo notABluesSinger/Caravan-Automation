@@ -7,6 +7,8 @@ const vm = require("node:vm");
 function createHarness(initialLightStatus, sensorStatus) {
   let eventHandler = null;
   const calls = [];
+  const startupCalls = [];
+  let tracking = startupCalls;
   let lightStatus = initialLightStatus;
   const sensor = sensorStatus;
 
@@ -17,14 +19,14 @@ function createHarness(initialLightStatus, sensorStatus) {
         eventHandler = handler;
       },
       getComponentStatus: function (component) {
-        if (component === "light:3") return lightStatus;
+        if (component === "light:0") return lightStatus;
         if (component === "input:3") return sensor;
         return null;
       },
       call: function (method, params) {
-        calls.push({ method: method, params: params });
+        tracking.push({ method: method, params: params });
 
-        if (method === "Light.Set") {
+        if (method === "Light.Set" && params.id === 0) {
           lightStatus = {
             output: !!params.on,
             brightness: params.brightness !== undefined ? params.brightness : lightStatus && lightStatus.brightness
@@ -41,6 +43,8 @@ function createHarness(initialLightStatus, sensorStatus) {
     { filename: "toiletLight.js" }
   );
 
+  tracking = calls;
+
   return {
     calls: calls,
     dispatch: function (component, eventName) {
@@ -52,6 +56,9 @@ function createHarness(initialLightStatus, sensorStatus) {
     },
     getCalls: function () {
       return JSON.parse(JSON.stringify(calls));
+    },
+    getStartupCalls: function () {
+      return JSON.parse(JSON.stringify(startupCalls));
     },
     getLightStatus: function () {
       return lightStatus;
@@ -68,7 +75,7 @@ test("PIR turns the light on at night brightness with the auto-off timer", funct
     {
       method: "Light.Set",
       params: {
-        id: 3,
+        id: 0,
         on: true,
         brightness: 20,
         toggle_after: 300
@@ -77,26 +84,56 @@ test("PIR turns the light on at night brightness with the auto-off timer", funct
   ]);
 });
 
-test("manual override from PIR mode clears the timer by cycling off then on", function () {
+test("push button disables PIR so motion no longer turns the light on", function () {
   const harness = createHarness({ output: false, brightness: 0 }, { percent: 10 });
 
-  harness.dispatch("input:0", "btn_down");
   harness.dispatch("input:1", "btn_down");
+  harness.dispatch("input:0", "btn_down");
 
-  assert.deepEqual(harness.getCalls().slice(-2), [
+  assert.deepEqual(harness.getCalls(), [
+    {
+      method: "Light.Set",
+      params: { id: 1, on: false }
+    }
+  ]);
+});
+
+test("second push button press re-enables PIR", function () {
+  const harness = createHarness({ output: false, brightness: 0 }, { percent: 10 });
+
+  harness.dispatch("input:1", "btn_down");
+  harness.dispatch("input:1", "btn_down");
+  harness.dispatch("input:0", "btn_down");
+
+  assert.deepEqual(harness.getCalls(), [
+    { method: "Light.Set", params: { id: 1, on: false } },
+    { method: "Light.Set", params: { id: 1, on: true } },
     {
       method: "Light.Set",
       params: {
-        id: 3,
-        on: false
-      }
-    },
-    {
-      method: "Light.Set",
-      params: {
-        id: 3,
+        id: 0,
         on: true,
-        brightness: 100
+        brightness: 20,
+        toggle_after: 300
+      }
+    }
+  ]);
+});
+
+test("push button does not affect the touch button", function () {
+  const harness = createHarness({ output: false, brightness: 0 }, { percent: 10 });
+
+  harness.dispatch("input:1", "btn_down");
+  harness.dispatch("input:2", "toggle");
+
+  assert.deepEqual(harness.getCalls(), [
+    { method: "Light.Set", params: { id: 1, on: false } },
+    {
+      method: "Light.Set",
+      params: {
+        id: 0,
+        on: true,
+        brightness: 60
       }
     }
   ]);
@@ -112,27 +149,9 @@ test("manual night-brightness state is not treated as PIR mode", function () {
     {
       method: "Light.Set",
       params: {
-        id: 3,
+        id: 0,
         on: true,
         brightness: 60
-      }
-    }
-  ]);
-});
-
-test("PIR ignores new motion while manual mode is already active", function () {
-  const harness = createHarness({ output: false, brightness: 0 }, { percent: 10 });
-
-  harness.dispatch("input:1", "btn_down");
-  harness.dispatch("input:0", "btn_down");
-
-  assert.deepEqual(harness.getCalls(), [
-    {
-      method: "Light.Set",
-      params: {
-        id: 3,
-        on: true,
-        brightness: 100
       }
     }
   ]);
@@ -144,4 +163,12 @@ test("PIR does not turn the light on when the sensor says it is bright", functio
   harness.dispatch("input:0", "btn_down");
 
   assert.deepEqual(harness.getCalls(), []);
+});
+
+test("startup syncs the PIR indicator to the initial enabled state", function () {
+  const harness = createHarness({ output: false, brightness: 0 }, { percent: 10 });
+
+  assert.deepEqual(harness.getStartupCalls(), [
+    { method: "Light.Set", params: { id: 1, on: true } }
+  ]);
 });
