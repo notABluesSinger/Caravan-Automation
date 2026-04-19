@@ -1,0 +1,8 @@
+{
+  "name": "caravan-automation",
+  "private": true,
+  "scripts": {
+    "deploy": "python3 ./scripts/put_script.py",
+    "test": "node --test"
+  }
+}

@@ -4,6 +4,7 @@ var CONFIG = {
     "0": {
       name: "PIR",
       type: "action",
+      mode: "pir",
       eventType: "btn_down",
       desiredBrightnessLevel: "night",
       turnLightOffAfter: 300,
@@ -15,6 +16,7 @@ var CONFIG = {
     "1": {
       name: "Push Button",
       type: "action",
+      mode: "manual",
       eventType: "btn_down",
       desiredBrightnessLevel: "full",
       turnLightOffAfter: null,
@@ -26,6 +28,7 @@ var CONFIG = {
     "2": {
       name: "Touch Button",
       type: "action",
+      mode: "manual",
       eventType: "toggle",
       desiredBrightnessLevel: "day",
       turnLightOffAfter: null,
@@ -53,6 +56,8 @@ var CONFIG = {
     full: 100
   }
 };
+
+var currentLightMode = null;
 
 function log(message) {
   if (!CONFIG.debug) return;
@@ -110,10 +115,10 @@ function getSensorValue(inputId) {
   return null;
 }
 
-// If no sensor is configured, or its reading is unavailable, fail open    
+// If no sensor is configured, or its reading is unavailable, fail open
 // (treat as dark) so a broken/missing sensor never blocks manual control
-// being gated on darkness. Callers that truly require darkness still get  
-// it when the sensor reports a reading above threshold. 
+// being gated on darkness. Callers that truly require darkness still get
+// it when the sensor reports a reading above threshold.
 function isDarkEnough() {
   var sensorId = getSensorInputId();
   var sensorConfig = sensorId ? CONFIG.inputs[sensorId] : null;
@@ -132,6 +137,16 @@ function isDarkEnough() {
 function restartLightWithoutTimer(brightness) {
   setLightState(false, null, null);
   setLightState(true, brightness, null);
+}
+
+function syncModeWithLightStatus(lightStatus) {
+  if (!lightStatus || !lightStatus.output) {
+    currentLightMode = null;
+  }
+}
+
+function setCurrentLightMode(mode) {
+  currentLightMode = mode || null;
 }
 
 function setLightState(on, brightness, autoOffSeconds) {
@@ -160,8 +175,7 @@ function setLightState(on, brightness, autoOffSeconds) {
 }
 
 function isPirModeActive(lightStatus) {
-  if (!lightStatus) return false;
-  return lightStatus.output && lightStatus.brightness === getBrightness("night");
+  return !!(lightStatus && lightStatus.output && currentLightMode === "pir");
 }
 
 function identifyEvent(event) {
@@ -187,6 +201,7 @@ function handleAction(inputConfig) {
     log("Light status unavailable");
     return;
   }
+  syncModeWithLightStatus(lightStatus);
   if (inputConfig.requiresDarkness && !lightStatus.output && !isDarkEnough()) {
     log(inputConfig.name + ": ignored, not dark enough to turn light on");
     return;
@@ -197,6 +212,7 @@ function handleAction(inputConfig) {
 
   if (!lightStatus.output) {
     log(inputConfig.name + ": light off, turning on to " + brightness + "%");
+    setCurrentLightMode(inputConfig.mode);
     setLightState(true, brightness, inputConfig.turnLightOffAfter);
     return;
   }
@@ -208,6 +224,7 @@ function handleAction(inputConfig) {
 
   if (pirActive && inputConfig.canOverridePir) {
     log(inputConfig.name + ": overriding PIR mode to " + brightness + "% and clearing timer");
+    setCurrentLightMode(inputConfig.mode);
     restartLightWithoutTimer(brightness);
     return;
   }
@@ -230,6 +247,7 @@ function handleAction(inputConfig) {
   }
 
   log(inputConfig.name + ": setting brightness to " + brightness + "%");
+  setCurrentLightMode(inputConfig.mode);
   setLightState(true, brightness, inputConfig.turnLightOffAfter);
 
 }
