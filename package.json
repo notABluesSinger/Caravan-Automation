@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "deploy": "python3 ./scripts/put_script.py",
+    "deploy:toilet-light": "node ./scripts/deploy.js toilet-light",
     "test": "node --test"
   }
 }
