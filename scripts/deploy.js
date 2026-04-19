@@ -32,6 +32,8 @@ function findScriptIdByName(payload, scriptName) {
 }
 
 async function fetchScriptList(host) {
+  // Shelly devices only expose their local RPC API over plain HTTP.
+  // eslint-disable-next-line sonarjs/no-clear-text-protocols
   const response = await fetch("http://" + host + "/rpc/Script.List", {
     signal: AbortSignal.timeout(5000)
   });
@@ -91,6 +93,8 @@ async function run() {
   console.log("Deploying " + targetPath + " to " + host + " using slot " + scriptId);
 
   const result = spawnSync(
+    // Resolve python3 via PATH so contributors can use whichever interpreter they have installed.
+    // eslint-disable-next-line sonarjs/no-os-command-from-path
     "python3",
     [
       path.join(__dirname, "put_script.py"),

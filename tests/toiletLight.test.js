@@ -37,6 +37,8 @@ function createHarness(initialLightStatus, sensorStatus) {
   };
 
   vm.createContext(context);
+  // Loading the Shelly script into a sandboxed VM context is how we exercise it without a device.
+  // eslint-disable-next-line sonarjs/code-eval
   vm.runInContext(
     fs.readFileSync(path.join(__dirname, "..", "src", "shelly", "toiletLight.js"), "utf8"),
     context,
