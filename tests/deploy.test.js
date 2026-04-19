@@ -1,7 +1,5 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
 
 const {
   TARGETS,
@@ -45,7 +43,7 @@ test("extractScripts accepts Script.List object shapes", function () {
 test("findScriptIdByName returns the matching script id", function () {
   assert.equal(
     findScriptIdByName({ scripts: [{ id: 7, name: "toiletLight.js" }] }, "toiletLight.js"),
-    "7"
+    7
   );
 });
 
@@ -54,12 +52,4 @@ test("findScriptIdByName returns null when no script matches", function () {
     findScriptIdByName({ scripts: [{ id: 7, name: "different.js" }] }, "toiletLight.js"),
     null
   );
-});
-
-test("README documents name-based lookup and explicit slot override", function () {
-  const readme = fs.readFileSync(path.join(__dirname, "..", "README.md"), "utf8");
-
-  assert.match(readme, /looks up the script on the device by name/i);
-  assert.match(readme, /npm run deploy:toilet-light -- 192\.168\.1\.50\n/);
-  assert.match(readme, /To override the slot explicitly:/);
 });

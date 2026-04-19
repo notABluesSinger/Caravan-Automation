@@ -4,7 +4,7 @@ Shelly scripts for our caravan, plus tooling to push them to the devices.
 
 ## Contents
 
-- `src/shelly/toiletLight.js` — toilet light controller. Handles three inputs (PIR, push button, touch button) with configurable brightness levels, dark-only triggering, and auto-off timers.
+- `src/shelly/toiletLight.js` — toilet light controller. Handles three action inputs (PIR, push button, touch button) plus a light sensor that gates PIR activation, with configurable brightness levels and auto-off timers.
 - `scripts/put_script.py` — official Shelly upload tool ([source](https://github.com/ALLTERCO/shelly-script-examples/blob/main/tools/put_script.py)). Stops the target script, uploads the new code in 1 KB chunks, then restarts it.
 - `scripts/deploy.js` — named deploy wrapper so each Shelly script can have a stable npm command.
 

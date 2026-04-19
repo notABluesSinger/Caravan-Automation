@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 const path = require("node:path");
-const http = require("node:http");
 const { spawnSync } = require("node:child_process");
 
 const TARGETS = {
@@ -29,39 +28,19 @@ function findScriptIdByName(payload, scriptName) {
     return script && script.name === scriptName;
   });
 
-  return match && match.id !== undefined ? String(match.id) : null;
+  return match && match.id !== undefined ? match.id : null;
 }
 
-function fetchScriptList(host) {
-  return new Promise(function (resolve, reject) {
-    const request = http.get("http://" + host + "/rpc/Script.List", function (response) {
-      let body = "";
-
-      response.setEncoding("utf8");
-      response.on("data", function (chunk) {
-        body += chunk;
-      });
-      response.on("end", function () {
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new Error("Script.List failed with HTTP " + response.statusCode));
-          return;
-        }
-
-        try {
-          resolve(JSON.parse(body));
-        } catch (error) {
-          reject(new Error("Failed to parse Script.List response: " + error.message));
-        }
-      });
-    });
-
-    request.on("error", function (error) {
-      reject(new Error("Failed to reach Shelly device: " + error.message));
-    });
-    request.setTimeout(5000, function () {
-      request.destroy(new Error("Timed out calling Script.List"));
-    });
+async function fetchScriptList(host) {
+  const response = await fetch("http://" + host + "/rpc/Script.List", {
+    signal: AbortSignal.timeout(5000)
   });
+
+  if (!response.ok) {
+    throw new Error("Script.List failed with HTTP " + response.status);
+  }
+
+  return response.json();
 }
 
 function printUsage() {
@@ -76,21 +55,25 @@ function printUsage() {
 }
 
 async function resolveScriptId(host, targetPath, explicitScriptId) {
-  if (explicitScriptId) {
-    console.error("Using explicit script slot " + explicitScriptId + " for " + targetPath);
-    return explicitScriptId;
+  if (explicitScriptId !== undefined) {
+    const parsed = Number(explicitScriptId);
+    if (!Number.isInteger(parsed)) {
+      throw new Error("Script slot id must be an integer, got: " + explicitScriptId);
+    }
+    console.log("Using explicit script slot " + parsed + " for " + targetPath);
+    return parsed;
   }
 
   const scriptName = getTargetScriptName(targetPath);
-  console.error("Looking up Shelly script named '" + scriptName + "' on " + host);
+  console.log("Looking up Shelly script named '" + scriptName + "' on " + host);
   const payload = await fetchScriptList(host);
   const scriptId = findScriptIdByName(payload, scriptName);
 
-  if (!scriptId) {
+  if (scriptId === null) {
     throw new Error("Could not find a Shelly script named '" + scriptName + "' on " + host);
   }
 
-  console.error("Resolved script '" + scriptName + "' to slot " + scriptId);
+  console.log("Resolved script '" + scriptName + "' to slot " + scriptId);
   return scriptId;
 }
 
@@ -103,37 +86,33 @@ async function run() {
     process.exit(1);
   }
 
-  let scriptId;
-  try {
-    scriptId = await resolveScriptId(host, targetPath, explicitScriptId);
-  } catch (error) {
-    console.error(error.message);
-    process.exit(1);
-  }
+  const scriptId = await resolveScriptId(host, targetPath, explicitScriptId);
 
-  console.error("Deploying " + targetPath + " to " + host + " using slot " + scriptId);
+  console.log("Deploying " + targetPath + " to " + host + " using slot " + scriptId);
 
   const result = spawnSync(
     "python3",
     [
       path.join(__dirname, "put_script.py"),
       host,
-      scriptId,
+      String(scriptId),
       targetPath
     ],
     { stdio: "inherit" }
   );
 
   if (result.error) {
-    console.error(result.error.message);
-    process.exit(1);
+    throw result.error;
   }
 
   process.exit(result.status === null ? 1 : result.status);
 }
 
 if (require.main === module) {
-  run();
+  run().catch(function (error) {
+    console.error(error.message);
+    process.exit(1);
+  });
 }
 
 module.exports = {
