@@ -66,7 +66,8 @@ var CONFIG = {
       active: true,
       name: "PIR Indicator",
       type: "light",
-      role: "pirIndicator"
+      role: "pirIndicator",
+      brightness: 100
     }
   },
   brightnessLevels: {
@@ -82,10 +83,7 @@ var STATE = {
 };
 
 var MAPPING = {
-  inputHandlers: {
-    "action": handleAction,
-    "pir-toggle": handleTogglePir
-  }
+  inputHandlers: {}
 };
 
 function log(message) {
@@ -124,16 +122,23 @@ function getPirIndicatorOutputId() {
   return getOutputIdByRole("pirIndicator");
 }
 
-function syncPirIndicator() {
+function setPirIndicator(on) {
   var id = getPirIndicatorOutputId();
   if (id === null) return;
-  Shelly.call("Light.Set", { id: id, on: STATE.pirEnabled });
+  var params = { id: id, on: on };
+  if (on) {
+    var brightness = CONFIG.outputs[String(id)].brightness;
+    if (isDefined(brightness)) params.brightness = brightness;
+  }
+  Shelly.call("Light.Set", params);
+}
+
+function syncPirIndicator() {
+  setPirIndicator(STATE.pirEnabled);
 }
 
 function flashPirIndicator() {
-  var id = getPirIndicatorOutputId();
-  if (id === null) return;
-  Shelly.call("Light.Set", { id: id, on: true });
+  setPirIndicator(true);
   Timer.set(300, false, syncPirIndicator);
 }
 
@@ -358,6 +363,9 @@ function dispatchInputEvent(event) {
   var handler = MAPPING.inputHandlers[eventConfig.type];
   if (handler) handler(buildEffectiveConfig(inputConfig, eventConfig));
 }
+
+MAPPING.inputHandlers["action"] = handleAction;
+MAPPING.inputHandlers["pir-toggle"] = handleTogglePir;
 
 Shelly.addEventHandler(function (event) {
   identifyEvent(event);

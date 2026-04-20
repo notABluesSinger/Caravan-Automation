@@ -106,7 +106,7 @@ test("push button disables PIR so motion no longer turns the light on", function
 
   assert.deepEqual(harness.getCalls(), [
     { method: "Light.Set", params: { id: 1, on: false } },
-    { method: "Light.Set", params: { id: 1, on: true } }
+    { method: "Light.Set", params: { id: 1, on: true, brightness: 20 } }
   ]);
 });
 
@@ -117,7 +117,7 @@ test("motion while PIR disabled flashes the indicator and then resyncs", functio
   harness.dispatch("input:0", "btn_down");
 
   assert.deepEqual(harness.getCalls().slice(-1), [
-    { method: "Light.Set", params: { id: 1, on: true } }
+    { method: "Light.Set", params: { id: 1, on: true, brightness: 20 } }
   ]);
 
   harness.runScheduledTimers();
@@ -136,7 +136,7 @@ test("second push button press re-enables PIR", function () {
 
   assert.deepEqual(harness.getCalls(), [
     { method: "Light.Set", params: { id: 1, on: false } },
-    { method: "Light.Set", params: { id: 1, on: true } },
+    { method: "Light.Set", params: { id: 1, on: true, brightness: 20 } },
     {
       method: "Light.Set",
       params: {
@@ -230,6 +230,6 @@ test("startup syncs the PIR indicator to the initial enabled state", function ()
   const harness = createHarness({ output: false, brightness: 0 }, { percent: 10 });
 
   assert.deepEqual(harness.getStartupCalls(), [
-    { method: "Light.Set", params: { id: 1, on: true } }
+    { method: "Light.Set", params: { id: 1, on: true, brightness: 20 } }
   ]);
 });
