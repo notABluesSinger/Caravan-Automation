@@ -4,7 +4,7 @@ Shelly scripts for our caravan, plus tooling to push them to the devices.
 
 ## Contents
 
-- `src/shelly/toiletLight.js` — toilet light controller with PIR-driven night lighting, manual brightness controls, and a PIR enable/disable toggle.
+- `src/shelly/toiletLight.js` — toilet light controller with PIR-driven night lighting, manual brightness controls including a long-press full-brightness override, and a PIR enable/disable toggle.
 - `scripts/put_script.py` — official Shelly upload tool ([source](https://github.com/ALLTERCO/shelly-script-examples/blob/main/tools/put_script.py)). Stops the target script, uploads the new code in 1 KB chunks, then restarts it.
 - `scripts/deploy.js` — named deploy wrapper so each Shelly script can have a stable `npm run` command.
 - `tests/` — Node-based test harness that loads each Shelly script into a sandboxed VM with stubs for the `Shelly` and `Timer` globals, so the event-handling logic can be exercised without a device.
@@ -42,6 +42,24 @@ flowchart LR
 
 The push-button input on the Shelly must be configured in **button** mode (in the Shelly web UI) so it emits `single_push` and `long_push` events.
 
+## Shopping list
+
+Reference links (Amazon UK). Pick equivalents if anything goes out of stock.
+
+| Component | Purpose | Link |
+|---|---|---|
+| Shelly Plus RGBW PM | Main controller | [amazon.co.uk](https://www.amazon.co.uk/dp/B0CXN2B9RS) |
+| PIR motion sensor | `input:0` — motion detection | [amazon.co.uk](https://www.amazon.co.uk/dp/B07XLKTQMG) |
+| Momentary pushbutton | `input:1` — short/long-press mode control | [amazon.co.uk](https://www.amazon.co.uk/dp/B0B8Z14K3T) |
+| Capacitive touch switch | `input:2` — day brightness toggle | [amazon.co.uk](https://www.amazon.co.uk/dp/B0B2RS23ZH) |
+| LDR (light-dependent resistor) | `input:3` — ambient light sensing | [amazon.co.uk](https://www.amazon.co.uk/dp/B09VYSKLL6) |
+| 5 mm LEDs | `light:1` — PIR indicator (and general use) | [amazon.co.uk](https://www.amazon.co.uk/dp/B0B74B2CWY) |
+| 12 V LED strip (bench testing) | `light:0` stand-in during development | [amazon.co.uk](https://www.amazon.co.uk/dp/B0CFZCXL1F) |
+| Resistors (assorted) | LED current limiting, LDR voltage divider | [amazon.co.uk](https://www.amazon.co.uk/dp/B0CL6NNZ44) |
+| Transistors | Low-side switching for extra loads | [amazon.co.uk](https://www.amazon.co.uk/dp/B0CPBR1FGB) |
+| Wago lever connectors | Tidy, reusable wiring | [amazon.co.uk](https://www.amazon.co.uk/dp/B08MYFJXC5) |
+| 12 V PSU | Shared supply (any 12 V DC unit sized for your strip will do) | [amazon.co.uk](https://www.amazon.co.uk/dp/B096VPYQ69) |
+
 ## Behaviour
 
 | Input | Event | What it does |
@@ -61,6 +79,8 @@ Brightness levels (`CONFIG.brightnessLevels` in the script):
 | full   | 100%  |
 
 If motion is detected while PIR mode is *disabled*, the indicator LED briefly pulses on (300 ms) and then resyncs to its disabled state. This makes it easy to confirm the sensor is wired correctly without the main light coming on.
+
+The indicator LED's on-state brightness is configurable via `CONFIG.outputs["1"].brightness` (default 100%) so it's visible without being distracting.
 
 ## Requirements
 
