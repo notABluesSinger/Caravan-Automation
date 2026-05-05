@@ -137,8 +137,8 @@ function syncPirIndicator() {
   setPirIndicator(STATE.pirEnabled);
 }
 
-function flashPirIndicator() {
-  setPirIndicator(true);
+function pulsePirIndicator() {
+  setPirIndicator(false);
   Timer.set(300, false, syncPirIndicator);
 }
 
@@ -271,7 +271,6 @@ function handleAlreadyAtRequestedBrightness(inputConfig, brightness) {
 function shouldSkipAction(inputConfig, lightStatus) {
   if (inputConfig.mode === "pir" && !STATE.pirEnabled) {
     log(inputConfig.name + ": ignored, PIR is disabled");
-    flashPirIndicator();
     return true;
   }
 
@@ -282,6 +281,7 @@ function shouldSkipAction(inputConfig, lightStatus) {
 
   if (isBlockedByDaylight(inputConfig, lightStatus)) {
     log(inputConfig.name + ": ignored, not dark enough to turn light on");
+    pulsePirIndicator();
     return true;
   }
 

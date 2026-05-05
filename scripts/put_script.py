@@ -16,8 +16,47 @@ parser.add_argument("file", help="Local file containing the script code to uploa
 CHUNK_SIZE = 1024
 
 
+class RpcError(Exception):
+    def __init__(self, method, message, status_code=None, error_code=None):
+        self.method = method
+        self.message = message
+        self.status_code = status_code
+        self.error_code = error_code
+        super().__init__(self.__str__())
+
+    def __str__(self):
+        if self.status_code is not None:
+            return f"HTTP error {self.status_code} calling {self.method}: {self.message}"
+        if self.error_code is not None:
+            return f"RPC error [{self.error_code}] calling {self.method}: {self.message}"
+        return f"Connection error calling {self.method}: {self.message}"
+
+
+def decode_json(text):
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return None
+
+
+def build_http_error(method, status_code, body):
+    payload = decode_json(body)
+    if isinstance(payload, dict) and payload.get("code", 0) < 0:
+        return RpcError(
+            method,
+            payload.get("message", body),
+            status_code=status_code,
+            error_code=payload["code"],
+        )
+    return RpcError(method, body, status_code=status_code)
+
+
+def raise_if_rpc_error(method, result):
+    if isinstance(result, dict) and result.get("code", 0) < 0:
+        raise RpcError(method, result.get("message", "unknown"), error_code=result["code"])
+
+
 def call_rpc(host, method, params):
-    """Call a Shelly RPC method and return the result."""
     url = f"http://{host}/rpc/{method}"
     req_data = json.dumps(params, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
@@ -30,39 +69,80 @@ def call_rpc(host, method, params):
             result = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
-        print(f"HTTP error {e.code} calling {method}: {body}")
-        sys.exit(1)
+        raise build_http_error(method, e.code, body)
     except urllib.error.URLError as e:
-        print(f"Connection error calling {method}: {e.reason}")
-        sys.exit(1)
+        raise RpcError(method, str(e.reason))
 
-    if isinstance(result, dict) and result.get("code", 0) < 0:
-        print(f"RPC error [{result['code']}]: {result.get('message', 'unknown')}")
-        sys.exit(1)
-
+    raise_if_rpc_error(method, result)
     return result
 
 
+def is_missing_script_error(error, script_id):
+    return (
+        error.error_code == -105
+        and f"value {script_id} not found" in error.message
+    )
+
+
+def extract_scripts(payload):
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        if isinstance(payload.get("scripts"), list):
+            return payload["scripts"]
+        result = payload.get("result")
+        if isinstance(result, dict) and isinstance(result.get("scripts"), list):
+            return result["scripts"]
+    return []
+
+
+def find_script_id_by_name(payload, name):
+    for script in extract_scripts(payload):
+        if isinstance(script, dict) and script.get("name") == name:
+            return script.get("id")
+    return None
+
+
+def ensure_script(host, script_id, name):
+    try:
+        call_rpc(host, "Script.GetConfig", {"id": script_id})
+        return script_id, True
+    except RpcError as error:
+        if not is_missing_script_error(error, script_id):
+            raise
+
+    script_list = call_rpc(host, "Script.List", {})
+    existing_id = find_script_id_by_name(script_list, name)
+    if isinstance(existing_id, int):
+        print(f"Requested slot {script_id} is empty; reusing '{name}' from slot {existing_id}")
+        return existing_id, True
+
+    print(f"Script {script_id} does not exist; creating '{name}'...")
+    result = call_rpc(host, "Script.Create", {"name": name})
+    created_id = result.get("id")
+    if not isinstance(created_id, int):
+        raise RpcError("Script.Create", f"Unexpected response: {result}")
+    if created_id != script_id:
+        print(f"Requested slot {script_id}, device created slot {created_id}")
+    return created_id, False
+
+
 def stop_script(host, script_id):
-    """Stop a running script."""
     print(f"Stopping script {script_id}...")
     call_rpc(host, "Script.Stop", {"id": script_id})
 
 
 def start_script(host, script_id):
-    """Start a script."""
     print(f"Starting script {script_id}...")
     call_rpc(host, "Script.Start", {"id": script_id})
 
 
-def rename_script(host, script_id, name):
-    """Set the script name on the device."""
+def configure_script(host, script_id, name):
     print(f"Setting name to '{name}'...")
-    call_rpc(host, "Script.SetConfig", {"id": script_id, "config": {"name": name}})
+    call_rpc(host, "Script.SetConfig", {"id": script_id, "config": {"name": name, "enable": True}})
 
 
 def upload_script(host, script_id, code):
-    """Upload script code in chunks."""
     total = len(code)
     print(f"Uploading {total} bytes in {CHUNK_SIZE}-byte chunks", end="", flush=True)
 
@@ -89,13 +169,17 @@ def main():
         code = f.read()
 
     name = os.path.basename(args.file)
-
-    stop_script(args.host, args.id)
-    rename_script(args.host, args.id, name)
-    upload_script(args.host, args.id, code)
-    start_script(args.host, args.id)
-
-    print("Done")
+    try:
+        script_id, exists = ensure_script(args.host, args.id, name)
+        if exists:
+            stop_script(args.host, script_id)
+        configure_script(args.host, script_id, name)
+        upload_script(args.host, script_id, code)
+        start_script(args.host, script_id)
+        print("Done")
+    except RpcError as error:
+        print(error)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
