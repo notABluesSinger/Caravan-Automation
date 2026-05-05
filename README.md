@@ -5,9 +5,9 @@ Shelly scripts for our caravan, plus tooling to push them to the devices.
 ## Contents
 
 - `src/shelly/toiletLight.js` — toilet light controller with PIR-driven night lighting, manual brightness controls including a long-press full-brightness override, and a PIR enable/disable toggle.
-- `scripts/put_script.py` — official Shelly upload tool ([source](https://github.com/ALLTERCO/shelly-script-examples/blob/main/tools/put_script.py)). Stops the target script, uploads the new code in 1 KB chunks, then restarts it.
+- `scripts/put_script.py` — Shelly upload helper based on the official tool ([source](https://github.com/ALLTERCO/shelly-script-examples/blob/main/tools/put_script.py)). It reuses an existing script slot when present, creates a new script when the target ID does not exist yet, uploads the code in 1 KB chunks, starts it, and enables run-on-boot.
 - `scripts/deploy.js` — named deploy wrapper so each Shelly script can have a stable `npm run` command.
-- `tests/` — Node-based test harness that loads each Shelly script into a sandboxed VM with stubs for the `Shelly` and `Timer` globals, so the event-handling logic can be exercised without a device.
+- `tests/` — Node-based test harness for Shelly scripts plus Python unit tests for the upload helper, so the event-handling and deploy logic can be exercised without a device.
 - `eslint.config.js` — ESLint + `eslint-plugin-sonarjs` setup with stricter complexity thresholds for `src/` and `scripts/`.
 
 ## Hardware
@@ -78,7 +78,7 @@ Brightness levels (`CONFIG.brightnessLevels` in the script):
 | day    | 75%   |
 | full   | 100%  |
 
-If motion is detected while PIR mode is *disabled*, the indicator LED briefly pulses on (300 ms) and then resyncs to its disabled state. This makes it easy to confirm the sensor is wired correctly without the main light coming on.
+If motion is detected while PIR mode is *disabled*, the main light stays off and the indicator remains in its current state. If PIR is enabled but the light sensor says it is too bright, the indicator briefly pulses off for 300 ms and then resyncs.
 
 The indicator LED's on-state brightness is configurable via `CONFIG.outputs["1"].brightness` (default 100%) so it's visible without being distracting.
 
@@ -92,6 +92,7 @@ The indicator LED's on-state brightness is configurable via `CONFIG.outputs["1"]
 
 ```bash
 npm test     # Run the local Node test harness
+python3 -m unittest tests.put_script_test # Run Python unit tests for the deploy helper
 npm run lint # ESLint + sonarjs (cognitive complexity, max-depth, etc.)
 ```
 
@@ -139,6 +140,6 @@ If you add more Shelly scripts later, wire them into `scripts/deploy.js` and the
   ```bash
   curl http://<device-ip>/rpc/Script.List
   ```
-  Named deploys use this list automatically to find the script with the expected name. If no script with that name exists yet, the deploy wrapper falls back to the lowest unused slot ID and `put_script.py` creates the script there during upload — no manual setup required.
+  Named deploys use this list automatically to find the script with the expected name. If no script with that name exists yet, the deploy wrapper falls back to the lowest unused slot ID and `put_script.py` creates a new script automatically. Shelly may return a different numeric ID than the one you requested on first deploy, so pay attention to the slot logged during upload.
 
-The script name on the device is set to the uploaded filename.
+The script name on the device is set to the uploaded filename, and deploys also enable the Shelly "run on startup" flag for that script.

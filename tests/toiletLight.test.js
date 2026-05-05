@@ -105,24 +105,17 @@ test("long-press on push button disables PIR so motion no longer turns the light
   harness.dispatch("input:0", "btn_down");
 
   assert.deepEqual(harness.getCalls(), [
-    { method: "Light.Set", params: { id: 1, on: false } },
-    { method: "Light.Set", params: { id: 1, on: true, brightness: 100 } }
+    { method: "Light.Set", params: { id: 1, on: false } }
   ]);
 });
 
-test("motion while PIR disabled by long-press flashes the indicator and then resyncs", function () {
+test("motion while PIR disabled leaves the indicator unchanged", function () {
   const harness = createHarness({ output: false, brightness: 0 }, { percent: 10 });
 
   harness.dispatch("input:1", "long_push");
   harness.dispatch("input:0", "btn_down");
 
-  assert.deepEqual(harness.getCalls().slice(-1), [
-    { method: "Light.Set", params: { id: 1, on: true, brightness: 100 } }
-  ]);
-
-  harness.runScheduledTimers();
-
-  assert.deepEqual(harness.getCalls().slice(-1), [
+  assert.deepEqual(harness.getCalls(), [
     { method: "Light.Set", params: { id: 1, on: false } }
   ]);
 });
@@ -186,12 +179,20 @@ test("manual night-brightness state is not treated as PIR mode", function () {
   ]);
 });
 
-test("PIR does not turn the light on when the sensor says it is bright", function () {
+test("PIR blinks the indicator off and back on when the sensor says it is bright", function () {
   const harness = createHarness({ output: false, brightness: 0 }, { percent: 80 });
 
   harness.dispatch("input:0", "btn_down");
 
-  assert.deepEqual(harness.getCalls(), []);
+  assert.deepEqual(harness.getCalls(), [
+    { method: "Light.Set", params: { id: 1, on: false } }
+  ]);
+
+  harness.runScheduledTimers();
+
+  assert.deepEqual(harness.getCalls().slice(-1), [
+    { method: "Light.Set", params: { id: 1, on: true, brightness: 100 } }
+  ]);
 });
 
 test("single-push on push button turns the light on at full brightness", function () {
