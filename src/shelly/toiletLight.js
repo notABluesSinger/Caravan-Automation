@@ -19,10 +19,10 @@ var CONFIG = {
     "1": {
       name: "Push Button",
       events: {
-        "single_push": {
+        "long_push": {
           type: "pir-toggle"
         },
-        "long_push": {
+        "single_push": {
           type: "action",
           mode: "manual",
           desiredBrightnessLevel: "full",
