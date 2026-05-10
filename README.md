@@ -4,7 +4,7 @@ Shelly scripts for our caravan, plus tooling to push them to the devices.
 
 ## Contents
 
-- `src/shelly/toiletLight.js` — toilet light controller with PIR-driven night lighting, manual brightness controls including a long-press full-brightness override, and a PIR enable/disable toggle.
+- `src/shelly/toiletLight.js` — toilet light controller with PIR-driven night lighting, a push-button scene that drives the main and secondary lights together, a touch-button day mode, and a PIR enable/disable toggle.
 - `scripts/put_script.py` — Shelly upload helper based on the official tool ([source](https://github.com/ALLTERCO/shelly-script-examples/blob/main/tools/put_script.py)). It reuses an existing script slot when present, creates a new script when the target ID does not exist yet, uploads the code in 1 KB chunks, starts it, and enables run-on-boot.
 - `scripts/deploy.js` — named deploy wrapper so each Shelly script can have a stable `npm run` command.
 - `tests/` — Node-based test harness for Shelly scripts plus Python unit tests for the upload helper, so the event-handling and deploy logic can be exercised without a device.
@@ -12,7 +12,7 @@ Shelly scripts for our caravan, plus tooling to push them to the devices.
 
 ## Hardware
 
-The toilet light system uses a **Shelly Plus RGBW PM** as the controller. Two of its four PWM channels drive lights, and the four physical inputs are wired to a PIR sensor, two buttons, and a light-level sensor.
+The toilet light system uses a **Shelly Plus RGBW PM** as the controller. Three of its four channels are used as outputs, and the four physical inputs are wired to a PIR sensor, two buttons, and a light-level sensor.
 
 ```mermaid
 flowchart LR
@@ -28,8 +28,9 @@ flowchart LR
     end
 
     subgraph Outputs
-        MAIN["light:0<br/>Main Lights"]
+        MAIN["light:0<br/>Main Light"]
         IND["light:1<br/>PIR Indicator LED"]
+        SEC["light:2<br/>Secondary Light"]
     end
 
     PIR --> SCRIPT
@@ -38,6 +39,7 @@ flowchart LR
     LDR --> SCRIPT
     SCRIPT --> MAIN
     SCRIPT --> IND
+    SCRIPT --> SEC
 ```
 
 The push-button input on the Shelly must be configured in **button** mode (in the Shelly web UI) so it emits `single_push` and `long_push` events.
@@ -50,11 +52,12 @@ Reference links (Amazon UK). Pick equivalents if anything goes out of stock.
 |---|---|---|
 | Shelly Plus RGBW PM | Main controller | [amazon.co.uk](https://www.amazon.co.uk/dp/B0CXN2B9RS) |
 | PIR motion sensor | `input:0` — motion detection | [amazon.co.uk](https://www.amazon.co.uk/dp/B07XLKTQMG) |
-| Momentary pushbutton | `input:1` — short/long-press mode control | [amazon.co.uk](https://www.amazon.co.uk/dp/B0B8Z14K3T) |
-| Capacitive touch switch | `input:2` — day brightness toggle | [amazon.co.uk](https://www.amazon.co.uk/dp/B0B2RS23ZH) |
+| Momentary pushbutton | `input:1` — short-press main + secondary toggle, long-press PIR mode toggle | [amazon.co.uk](https://www.amazon.co.uk/dp/B0B8Z14K3T) |
+| Capacitive touch switch | `input:2` — day brightness toggle on the main light | [amazon.co.uk](https://www.amazon.co.uk/dp/B0B2RS23ZH) |
 | LDR (light-dependent resistor) | `input:3` — ambient light sensing | [amazon.co.uk](https://www.amazon.co.uk/dp/B09VYSKLL6) |
 | 5 mm LEDs | `light:1` — PIR indicator (and general use) | [amazon.co.uk](https://www.amazon.co.uk/dp/B0B74B2CWY) |
 | 12 V LED strip (bench testing) | `light:0` stand-in during development | [amazon.co.uk](https://www.amazon.co.uk/dp/B0CFZCXL1F) |
+| Relay-switched secondary light | `light:2` — full-brightness on/off secondary output | existing caravan hardware |
 | Resistors (assorted) | LED current limiting, LDR voltage divider | [amazon.co.uk](https://www.amazon.co.uk/dp/B0CL6NNZ44) |
 | Transistors | Low-side switching for extra loads | [amazon.co.uk](https://www.amazon.co.uk/dp/B0CPBR1FGB) |
 | Wago lever connectors | Tidy, reusable wiring | [amazon.co.uk](https://www.amazon.co.uk/dp/B08MYFJXC5) |
@@ -65,8 +68,8 @@ Reference links (Amazon UK). Pick equivalents if anything goes out of stock.
 | Input | Event | What it does |
 |-------|-------|--------------|
 | PIR (input:0) | `btn_down` | Turn the main light to **night brightness (25%)** for 5 min, but only when it's dark *and* PIR mode is enabled. |
-| Push Button (input:1) | `single_push` | Toggle PIR mode on/off. The indicator LED reflects the current state (on = PIR enabled). |
-| Push Button (input:1) | `long_push` | Turn the main light to **full (100%)**, overriding any PIR-driven state. Long-pressing again while already at full turns it off. |
+| Push Button (input:1) | `single_push` | Toggle the **main light and secondary light together** at full brightness. If PIR mode was active, this overrides it and clears the PIR auto-off timer. |
+| Push Button (input:1) | `long_push` | Toggle PIR mode on/off. The indicator LED reflects the current state (on = PIR enabled, off = PIR disabled). |
 | Touch Button (input:2) | `toggle` | Set **day brightness (75%)**. Toggling while already at 75% turns the light off. |
 | Light Sensor (input:3) | (analog) | Gates the PIR — readings above the configured threshold (50%) mean "too bright, ignore motion". |
 
@@ -78,9 +81,9 @@ Brightness levels (`CONFIG.brightnessLevels` in the script):
 | day    | 75%   |
 | full   | 100%  |
 
-If motion is detected while PIR mode is *disabled*, the main light stays off and the indicator remains in its current state. If PIR is enabled but the light sensor says it is too bright, the indicator briefly pulses off for 300 ms and then resyncs.
+If motion is detected while PIR mode is *disabled*, the main light stays off and the indicator remains off. If PIR is enabled but the light sensor says it is too bright, the main light stays off and the indicator briefly pulses off for 300 ms and then resyncs.
 
-The indicator LED's on-state brightness is configurable via `CONFIG.outputs["1"].brightness` (default 100%) so it's visible without being distracting.
+The indicator LED's on-state brightness is configurable via `CONFIG.outputs["1"].brightness` (default 100%). The secondary light is configured via `CONFIG.outputs["2"]` and is treated as a full-brightness on/off output.
 
 ## Requirements
 
