@@ -69,9 +69,9 @@ Reference links (Amazon UK). Pick equivalents if anything goes out of stock.
 |-------|-------|--------------|
 | PIR (input:0) | `btn_down` | Turn the main light to **night brightness (25%)** for 5 min, but only when it's dark *and* PIR mode is enabled. |
 | Push Button (input:1) | `single_push` | Toggle the **main light and secondary light together** at full brightness. If PIR mode was active, this overrides it and clears the PIR auto-off timer. |
-| Push Button (input:1) | `long_push` | Toggle PIR mode on/off. The indicator LED reflects the current state (on = PIR enabled, off = PIR disabled). |
+| Push Button (input:1) | `long_push` | Toggle PIR mode on/off. The indicator LED reflects the current state (on = PIR enabled, off = PIR disabled) and dims when it is dark. |
 | Touch Button (input:2) | `toggle` | Set **day brightness (75%)**. Toggling while already at 75% turns the light off. |
-| Light Sensor (input:3) | (analog) | Gates the PIR — readings above the configured threshold (50%) mean "too bright, ignore motion". |
+| Light Sensor (input:3) | (analog) | Gates the PIR and updates the indicator brightness — readings above the configured threshold (50%) mean "too bright, ignore motion". |
 
 Brightness levels (`CONFIG.brightnessLevels` in the script):
 
@@ -83,7 +83,7 @@ Brightness levels (`CONFIG.brightnessLevels` in the script):
 
 If motion is detected while PIR mode is *disabled*, the main light stays off and the indicator remains off. If PIR is enabled but the light sensor says it is too bright, the main light stays off and the indicator briefly pulses off for 300 ms and then resyncs.
 
-The indicator LED's on-state brightness is configurable via `CONFIG.outputs["1"].brightness` (default 100%). The secondary light is configured via `CONFIG.outputs["2"]` and is treated as a full-brightness on/off output.
+The indicator LED's on-state brightness is configurable via `CONFIG.outputs["1"].brightness` for daylight (default 25%) and `CONFIG.outputs["1"].nightBrightness` when the light sensor says it is dark (default 5%). LDR analog change/measurement events resync the indicator, so it can dim or brighten without a button press. The secondary light is configured via `CONFIG.outputs["2"]` and is treated as a full-brightness on/off output.
 
 ## Requirements
 

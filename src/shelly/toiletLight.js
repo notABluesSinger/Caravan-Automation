@@ -56,7 +56,15 @@ var CONFIG = {
     "3": {
       name: "Light Sensor",
       type: "measure",
-      threshold: 50
+      threshold: 50,
+      events: {
+        "analog_change": {
+          eventHandler: "syncPirIndicator"
+        },
+        "analog_measurement": {
+          eventHandler: "syncPirIndicator"
+        }
+      }
     }
   },
   outputs: {
@@ -71,7 +79,8 @@ var CONFIG = {
       name: "PIR Indicator",
       type: "light",
       role: "pirIndicator",
-      brightness: 100
+      brightness: 25,
+      nightBrightness: 5
     },
     "2": {
       active: true,
@@ -91,7 +100,9 @@ var CONFIG = {
 var STATE = {
   currentLightMode: null,
   pirEnabled: true,
-  pulseTimer: null
+  pulseTimer: null,
+  pirIndicatorOn: null,
+  pirIndicatorBrightness: null
 };
 
 var OUTPUTS_BY_ROLE = {};
@@ -178,18 +189,33 @@ function setOutputRoleState(role, on, brightness, autoOffSeconds) {
   Shelly.call("Light.Set", buildLightParams(outputId, on, brightness, autoOffSeconds));
 }
 
-function syncPirIndicator() {
+function getPirIndicatorBrightness() {
   var outputConfig = getOutputConfigByRole("pirIndicator");
-  setOutputRoleState("pirIndicator", STATE.pirEnabled, outputConfig && outputConfig.brightness, null);
+  if (!outputConfig) return null;
+  if (isDarkEnough() && isDefined(outputConfig.nightBrightness)) return outputConfig.nightBrightness;
+  return outputConfig.brightness;
+}
+
+function setPirIndicatorState(on, brightness) {
+  if (STATE.pirIndicatorOn === on && STATE.pirIndicatorBrightness === brightness) return;
+  setOutputRoleState("pirIndicator", on, brightness, null);
+  STATE.pirIndicatorOn = on;
+  STATE.pirIndicatorBrightness = brightness;
+}
+
+function syncPirIndicator() {
+  var brightness;
+  if (STATE.pulseTimer) return;
+  brightness = STATE.pirEnabled ? getPirIndicatorBrightness() : null;
+  setPirIndicatorState(STATE.pirEnabled, brightness);
 }
 
 function pulsePirIndicator() {
-  var outputConfig = getOutputConfigByRole("pirIndicator");
   if (STATE.pulseTimer) {
     Timer.clear(STATE.pulseTimer);
     STATE.pulseTimer = null;
   }
-  setOutputRoleState("pirIndicator", false, outputConfig && outputConfig.brightness, null);
+  setPirIndicatorState(false, null);
   STATE.pulseTimer = Timer.set(300, false, function () {
     STATE.pulseTimer = null;
     syncPirIndicator();
@@ -448,7 +474,8 @@ function initialize() {
 var EVENT_HANDLERS = {
   applyInputAction: applyInputAction,
   togglePirEnabled: togglePirEnabled,
-  applyButtonAction: applyButtonAction
+  applyButtonAction: applyButtonAction,
+  syncPirIndicator: syncPirIndicator
 };
 
 function isInputEvent(event) {

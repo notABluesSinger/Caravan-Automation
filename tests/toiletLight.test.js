@@ -159,7 +159,7 @@ test("second long-press on push button re-enables PIR", function () {
 
   assert.deepEqual(harness.getCalls(), [
     { method: "Light.Set", params: { id: 1, on: false } },
-    { method: "Light.Set", params: { id: 1, on: true, brightness: 100 } },
+    { method: "Light.Set", params: { id: 1, on: true, brightness: 5 } },
     {
       method: "Light.Set",
       params: {
@@ -221,7 +221,7 @@ test("PIR blinks the indicator off and back on when the sensor says it is bright
   harness.runScheduledTimers();
 
   assert.deepEqual(harness.getCalls().slice(-1), [
-    { method: "Light.Set", params: { id: 1, on: true, brightness: 100 } }
+    { method: "Light.Set", params: { id: 1, on: true, brightness: 25 } }
   ]);
 });
 
@@ -234,8 +234,7 @@ test("PIR bright pulse restarts instead of stacking indicator restore timers", f
 
   assert.deepEqual(harness.getCalls(), [
     { method: "Light.Set", params: { id: 1, on: false } },
-    { method: "Light.Set", params: { id: 1, on: false } },
-    { method: "Light.Set", params: { id: 1, on: true, brightness: 100 } }
+    { method: "Light.Set", params: { id: 1, on: true, brightness: 25 } }
   ]);
 });
 
@@ -354,7 +353,39 @@ test("startup syncs the PIR indicator to the initial enabled state", function ()
   const harness = createHarness({ output: false, brightness: 0 }, { output: false, brightness: 0 }, { percent: 10 });
 
   assert.deepEqual(harness.getStartupCalls(), [
-    { method: "Light.Set", params: { id: 1, on: true, brightness: 100 } }
+    { method: "Light.Set", params: { id: 1, on: true, brightness: 5 } }
+  ]);
+});
+
+test("startup keeps the PIR indicator bright during daylight", function () {
+  const harness = createHarness({ output: false, brightness: 0 }, { output: false, brightness: 0 }, { percent: 80 });
+
+  assert.deepEqual(harness.getStartupCalls(), [
+    { method: "Light.Set", params: { id: 1, on: true, brightness: 25 } }
+  ]);
+});
+
+test("LDR analog change events dim the PIR-enabled indicator", function () {
+  const sensorStatus = { percent: 80 };
+  const harness = createHarness({ output: false, brightness: 0 }, { output: false, brightness: 0 }, sensorStatus);
+
+  sensorStatus.percent = 10;
+  harness.dispatch("input:3", "analog_change");
+
+  assert.deepEqual(harness.getCalls(), [
+    { method: "Light.Set", params: { id: 1, on: true, brightness: 5 } }
+  ]);
+});
+
+test("LDR analog measurement events brighten the PIR-enabled indicator", function () {
+  const sensorStatus = { percent: 10 };
+  const harness = createHarness({ output: false, brightness: 0 }, { output: false, brightness: 0 }, sensorStatus);
+
+  sensorStatus.percent = 80;
+  harness.dispatch("input:3", "analog_measurement");
+
+  assert.deepEqual(harness.getCalls(), [
+    { method: "Light.Set", params: { id: 1, on: true, brightness: 25 } }
   ]);
 });
 
@@ -412,6 +443,8 @@ test("configured event handlers are stored as string names", function () {
   assert.equal(typeof config.inputs["1"].events.long_push.eventHandler, "string");
   assert.equal(typeof config.inputs["1"].events.single_push.eventHandler, "string");
   assert.equal(typeof config.inputs["2"].events.toggle.eventHandler, "string");
+  assert.equal(typeof config.inputs["3"].events.analog_change.eventHandler, "string");
+  assert.equal(typeof config.inputs["3"].events.analog_measurement.eventHandler, "string");
 });
 
 test("every configured event handler resolves through the runtime handler registry", function () {
@@ -423,4 +456,6 @@ test("every configured event handler resolves through the runtime handler regist
   assert.equal(typeof eventHandlers[config.inputs["1"].events.long_push.eventHandler], "function");
   assert.equal(typeof eventHandlers[config.inputs["1"].events.single_push.eventHandler], "function");
   assert.equal(typeof eventHandlers[config.inputs["2"].events.toggle.eventHandler], "function");
+  assert.equal(typeof eventHandlers[config.inputs["3"].events.analog_change.eventHandler], "function");
+  assert.equal(typeof eventHandlers[config.inputs["3"].events.analog_measurement.eventHandler], "function");
 });
